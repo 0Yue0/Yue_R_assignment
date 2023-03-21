@@ -204,13 +204,15 @@ ggplot(data = as, aes(x=position.bin, fill= Chromosome)) +
 ```{r}
 
 # SNP distribution across chromosomes - two species
-as1 <- maize_merged
+as1 <- maize_merged # filter maize data
 as1$class <- "maize"
 as1 <- select(as1, Chromosome, class)
-as2 <- teosinte_merged
+
+as2 <- teosinte_merged # filter teosinte data
 as2$class <- "teosinte" 
 as2 <- select(as2, Chromosome, class)
-as <- rbind(as1,as2)
+
+as <- rbind(as1,as2) # combine maize and teosinte data set
 as <- filter(as, Chromosome %in% c(1:10))
 
 ggplot(data = as) +
@@ -246,89 +248,124 @@ ggplot() +
 # Missing data and amount of heterozygosity
 
 ```{r}
-
-maize_aa <- maize_merged 
-maize_aa <- filter(maize_merged, Chromosome %in% c(1:10))
-
-
-
-ggplot(maize_aa) +
-  geom_bar(aes(x=Chromosome))
-
-ggplot(maize_aa) +
-  geom_bar(aes(x=Chromosome, fill = Chromosome))
-
-ggplot(maize_aa) +
-  geom_bar(aes(x=Chromosome, fill = Chromosome), position = "fill")
-
-```
-
-
-
-
-```{r}
 # read data
-heterozygosity_maize <- fang_et_al_genotypes
-heterozygosity_maize <- filter(heterozygosity_maize, Group %in% c('ZMMIL', 'ZMMLR', 'ZMMMR')) 
+heterozygosity <- fang_et_al_genotypes
 
+# replace snp data with either "homo", "hetero", or "miss"
 
 for (i in c("A/A","T/T", "C/C", "G/G")) {
-  heterozygosity_maize <- as_tibble(lapply(heterozygosity_maize, gsub, pattern = i, replacement = "homo") )
+  heterozygosity <- as_tibble(lapply(heterozygosity, gsub, pattern = i, replacement = "homo") )
 } 
 
 for (i in c("A/T", "A/G","A/C","T/A","T/C", "T/G","C/G","C/T","C/A","G/C", "G/A","G/T")) {
-  heterozygosity_maize <- as_tibble(lapply(heterozygosity_maize, gsub, pattern = i, replacement = "hetero") )
+  heterozygosity <- as_tibble(lapply(heterozygosity, gsub, pattern = i, replacement = "hetero") )
 }
 
-heterozygosity_maize <- as_tibble(lapply(heterozygosity_maize, gsub, pattern = "\\?\\/\\?", replacement = "miss") )
+heterozygosity <- as_tibble(lapply(heterozygosity, gsub, pattern = "\\?\\/\\?", replacement = "miss") )
 
-heterozygosity_maize <- heterozygosity_maize %>% 
-  pivot_longer(cols = -c ("Sample_ID", "JG_OTU","Group"),
+
+heterozygosity1 <- filter(heterozygosity, Group %in% c('ZMMIL', 'ZMMLR', 'ZMMMR')) # filter maize data
+heterozygosity1$class <- "maize"
+heterozygosity2 <- filter(heterozygosity, Group %in% c('ZMPBA', 'ZMPIL', 'ZMPJA')) # filter teosinte data
+heterozygosity2$class <- "teosinte"
+heterozygosity <- rbind(heterozygosity1, heterozygosity2) # merge maize and teosinte data
+
+# reshape the datat
+heterozygosity <- heterozygosity %>% 
+  pivot_longer(cols = -c ("Sample_ID", "JG_OTU","Group","class"),
                names_to = "SNP_ID",
                values_to = "snp_data"
                )
-ggplot(heterozygosity_maize) +
+
+# heterozygosity of maize vs. teosinte
+
+ggplot(heterozygosity) +
+  geom_bar(aes(x=class, fill = snp_data))
+
+ggplot(heterozygosity) +
+  geom_bar(aes(x=class, fill = snp_data), position = "fill")
+
+
+# heterozygosity based on groups
+
+ggplot(heterozygosity) +
   geom_bar(aes(x=Group, fill = snp_data))
 
-ggplot(heterozygosity_maize) +
+ggplot(heterozygosity) +
   geom_bar(aes(x=Group, fill = snp_data), position = "fill")
 
 
+# heterozygosity based on samples
+ggplot(heterozygosity) +
+  geom_bar(aes(x=Sample_ID, fill = snp_data))
+
+ggplot(heterozygosity) +
+  geom_bar(aes(x=Sample_ID, fill = snp_data), position = "fill")
 
 ```
 
-```{r}
-#count SNP based on types
-heterozygosity <- fang_et_al_genotypes 
-heterozygosity$missing_data <- rowSums(heterozygosity == "?/?")
-heterozygosity$AA <- rowSums(heterozygosity == "A/A")
-heterozygosity$TT <- rowSums(heterozygosity == "T/T")
-heterozygosity$CC <- rowSums(heterozygosity == "C/C")
-heterozygosity$GG <- rowSums(heterozygosity == "G/G")
-heterozygosity <- mutate(heterozygosity, homo = AA + TT + CC + GG)
-heterozygosity <- mutate(heterozygosity, hetero = 983 - homo - missing_data)
-heterozygosity <- select(heterozygosity, Sample_ID, Group, homo, hetero, missing_data) %>% as.data.frame()
-maize
-
-#heterozygosity <- mutate(heterozygosity, homo = homo/983, hetero = hetero/983, missing_data = missing_data/983)
-
-ggplot(heterozygosity) +
-  geom_bar(aes(x=Group, fill = Group))
-
-ggplot(heterozygosity) +
-  geom_bar(aes(x=Group, fill = ae1.4))
-
-ggplot(heterozygosity) +
-  geom_bar(aes(x=Group, fill = Group), position = "fill")
-```
-
-
-```
 
 
 # my own visualization
 
+
 ```{r}
+# tying to compare the heterozygosity of maize and teosinte on each chromosome
+
+## prepare maize data
+two1 <- maize_merged 
+two1$Position <- as.numeric(as.factor(two1$Position))
+two1$Chromosome <- as.numeric(as.factor(two1$Chromosome))
+two1 <- two1 %>% 
+  filter(Position != "multiple" | Position != "unknown") %>% 
+  filter(Chromosome != "unknown") %>% 
+  group_by(Chromosome) %>%  
+  mutate(position.bin = cut(Position, 10, labels = FALSE))
+two1$class <- "maize"
+two1 <- two1 %>% 
+  pivot_longer(cols = -c ("SNP_ID", "Chromosome","Position","class","position.bin"),
+               names_to = "Sample_ID",
+               values_to = "snp_data"
+               )
+
+## prepare teosinte data
+two2 <- teosinte_merged
+two2$Position <- as.numeric(as.factor(two2$Position))
+two2$Chromosome <- as.numeric(as.factor(two2$Chromosome))
+two2 <- two2 %>% 
+  filter(Position != "multiple" | Position != "unknown") %>% 
+  filter(Chromosome != "multiple" | Chromosome != "unknown") %>% 
+  group_by(Chromosome) %>%  
+  mutate(position.bin = cut(Position, 10, labels = FALSE))
+two2$class <- "teosinte"
+two2 <- two2 %>% 
+  pivot_longer(cols = -c ("SNP_ID", "Chromosome","Position", "class", "position.bin"),
+               names_to = "Sample_ID",
+               values_to = "snp_data"
+               )
+## merge maize and teosinte data
+two <- rbind(two1,two2) 
+
+
+## replace snp data with either "homo", "hetero", or "miss"
+
+for (i in c("A/A","T/T", "C/C", "G/G")) {
+  two <- as_tibble(lapply(two, gsub, pattern = i, replacement = "homo") )
+} 
+
+for (i in c("A/T", "A/G","A/C","T/A","T/C", "T/G","C/G","C/T","C/A","G/C", "G/A","G/T")) {
+  two <- as_tibble(lapply(two, gsub, pattern = i, replacement = "hetero") )
+}
+
+two <- as_tibble(lapply(two, gsub, pattern = "\\?\\/\\?", replacement = "miss") )
+
+
+
+ggplot(data = two) +
+  geom_bar(aes(x=class, fill=snp_data), position = "fill") + 
+  facet_wrap(~ Chromosome, nrow = 3, ncol = 4) +
+  xlab("Chromosome")
+
 
 ```
 
