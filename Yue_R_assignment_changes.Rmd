@@ -16,9 +16,6 @@ date: "2023-03-11"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
 
 # set enviroment
 ```{r}
@@ -31,22 +28,20 @@ library("filesstrings")
 
 # input data and do data inspections
 ```{r}
-snp_data <- read_tsv("./data/fang_et_al_genotypes.txt", col_names = TRUE)
-snp_position <- read_tsv("./data/snp_position.txt", col_names = TRUE)
+fang_et_al_genotypes <- read_tsv("./data/fang_et_al_genotypes.txt")
+snp_position <- read_tsv("./data/snp_position.txt")
 ```
 
 # data inspection
 
 ```{r}
-typeof(snp_data)
-str(snp_data)
-```
+typeof(fang_et_al_genotypes)
+class(fang_et_al_genotypes)
+str(fang_et_al_genotypes)
 
-# data inspection
-
-```{r}
 typeof(snp_position)
-str(snp_position)
+class(snp_position)
+str(snp_data)
 ```
 
 
@@ -54,140 +49,121 @@ str(snp_position)
 # assign slected rows into new variables
 # remove the fisrt 3 columns selected rows 
 ```{r}
-maize <- filter(snp_data, Group %in% c('ZMMIL', 'ZMMLR', 'ZMMMR'))
-maize <- select(maize, -(Sample_ID:Group))
-as.list(maize)
-teosinte <- filter(snp_data, Group %in% c('ZMPBA', 'ZMPIL', 'ZMPJA'))
-teosinte <- select(teosinte, -(Sample_ID:Group))
-as.list(maize) 
+maize <- filter(fang_et_al_genotypes, Group %in% c('ZMMIL', 'ZMMLR', 'ZMMMR'))
+
+teosinte <- filter(fang_et_al_genotypes, Group %in% c('ZMPBA', 'ZMPIL', 'ZMPJA'))
 ```
 
 
-# transpose maize and teosinte SNP data, assign new variables, and change data structure
+
+
+# prepare genotype data before merging with snp id
+
 ```{r}
-maize_t <- t(maize) 
-maize_t <- as.data.frame(maize_t)
-teosinte_t <- t(teosinte)
-teosinte_t <- as.data.frame(teosinte_t)
+maize <- select(maize, -(JG_OTU:Group))
+maize_t <- t(maize) %>% as.data.frame(.) # transpose data 
+maize_t <- tibble::rownames_to_column(maize_t, "Sample_ID") # convert the row names to first column
+maize_t <- as_tibble(lapply(maize_t, gsub, pattern = "Sample_ID", replace = "SNP_ID")) 
+columns <- maize_t[1,] # extract first row
+colnames(maize_t) <- columns # use first row as column names
+maize_t <- maize_t[-1,] # remove first row
+
+teosinte <- select(teosinte, -(JG_OTU:Group))
+teosinte_t <- t(teosinte) %>% as.data.frame(.)
+teosinte_t <- tibble::rownames_to_column(teosinte_t, "Sample_ID")
+teosinte_t <- as_tibble(lapply(teosinte_t, gsub, pattern = "Sample_ID", replace = "SNP_ID")) 
+columns <- teosinte_t[1,] # extract first row
+colnames(teosinte_t) <- columns # use first row as column names
+teosinte_t <- teosinte_t[-1,] # remove first row
 ```
 
 
 # extract SNP IDs from "snp_position.txt" and assign new variables
 ```{r}
-snp_id <- select(snp_position, SNP_ID, Chromosome, Position)
+snp_id <- select(snp_position, SNP_ID, Chromosome, Position) 
 snp_id <- as.data.frame(snp_id)
 ```
 
 
 # merge SNP data with SNP ID
 ```{r}
-maize_merged <- mutate(snp_id, maize_t)
-teosinte_merged <- mutate(snp_id, teosinte_t)
-
+maize_merged <- inner_join(snp_id, maize_t, by = "SNP_ID")
+teosinte_merged <- inner_join(snp_id, teosinte_t, by = "SNP_ID")
 ```
 
 
 
 # replace missing dat by ? or -
 ```{r}
-maize_merged_with_q <- as_tibble(lapply(maize_merged, gsub, pattern = "\\?\\/\\?", replacement = "\\?"))
-maize_merged_with_d <- as_tibble(lapply(maize_merged, gsub, pattern = "\\?\\/\\?", replacement = "\\-"))
-teosinte_merged_with_q <- as_tibble(lapply(teosinte_merged, gsub, pattern = "\\?\\/\\?", replacement = "\\?"))
-teosinte_merged_with_d <- as_tibble(lapply(teosinte_merged, gsub, pattern = "\\?\\/\\?", replacement = "\\-"))
-```
+maize_merged_with_question <- as_tibble(lapply(maize_merged, gsub, pattern = "\\?", replacement = "\\?")) 
+maize_merged_with_dash <- as_tibble(lapply(maize_merged, gsub, pattern = "\\?", replacement = "\\-"))
+teosinte_merged_with_question <- as_tibble(lapply(teosinte_merged, gsub, pattern = "\\?", replacement = "\\?"))
+teosinte_merged_with_dash <- as_tibble(lapply(teosinte_merged, gsub, pattern = "\\?", replacement = "\\-"))
 
-# creat directories and make it tidy
-```{r}
-dir.create('./maize')
-dir.create('./teosinte')
-```
+maize_merged_with_question$Position <- as.double(maize_merged_with_question$Position) # change the type of Position column to numeric for further sorting
+maize_merged_with_dash$Position <- as.double(maize_merged_with_dash$Position)
+teosinte_merged_with_question$Position <- as.double(teosinte_merged_with_question$Position)
+teosinte_merged_with_dash$Position <- as.double(teosinte_merged_with_dash$Position)
 
-# produce maize files grouped by chromosome with ascending position, missiing data is replaced by ?, save in ./maize
-
-```{r}
-f <- maize_merged_with_q
- 
-for (i in 1:10){subdata=f[f$Chromosome==i,];subdata=subdata[order(subdata$Position),];of=paste('./maize/maize_ascending_chr', i,sep='_');colnames(subdata)=colnames(f);write.table(subdata,file=of,quote=F,sep='\t',row.names=F)}
 ```
 
 
-maize_ascending_chr1 <- filter(maize_merged_with_q, Chromosome ==1) %>% arrange(Position)
-maize_ascending_chr2 <- filter(maize_merged_with_q, Chromosome ==2) %>% arrange(Position)
-maize_ascending_chr3 <- filter(maize_merged_with_q, Chromosome ==3) %>% arrange(Position)
-maize_ascending_chr4 <- filter(maize_merged_with_q, Chromosome ==4) %>% arrange(Position)
-maize_ascending_chr5 <- filter(maize_merged_with_q, Chromosome ==5) %>% arrange(Position)
-maize_ascending_chr6 <- filter(maize_merged_with_q, Chromosome ==6) %>% arrange(Position)
-maize_ascending_chr7 <- filter(maize_merged_with_q, Chromosome ==7) %>% arrange(Position)
-maize_ascending_chr8 <- filter(maize_merged_with_q, Chromosome ==8) %>% arrange(Position)
-maize_ascending_chr9 <- filter(maize_merged_with_q, Chromosome ==9) %>% arrange(Position)
-maize_ascending_chr10 <- filter(maize_merged_with_q, Chromosome ==10) %>% arrange(Position)
-
-
-# produce maize files grouped by chromosome with descending position, missiing data is replaced by -, and save in ./maize
-
+# creat directories for exporting maize and tosinte data
 ```{r}
-f <- maize_merged_with_d
- 
-for (i in 1:10){subdata=f[f$Chromosome==i,];subdata=subdata[order(subdata$Position),decrease=T];of=paste('./maize/maize_descending_chr', i,sep='_');colnames(subdata)=colnames(f);write.table(subdata,file=of,quote=F,sep='\t',row.names=F)}
+dir.create('./maize_after_review')
+dir.create('./teosinte_after_review')
 ```
 
-```{r}
-maize_descending_chr1 <- filter(maize_merged_with_d, Chromosome ==1) %>% arrange(desc(Position))
-maize_descending_chr2 <- filter(maize_merged_with_d, Chromosome ==2) %>% arrange(desc(Position))
-maize_descending_chr3 <- filter(maize_merged_with_d, Chromosome ==3) %>% arrange(desc(Position))
-maize_descending_chr4 <- filter(maize_merged_with_d, Chromosome ==4) %>% arrange(desc(Position))
-maize_descending_chr5 <- filter(maize_merged_with_d, Chromosome ==5) %>% arrange(desc(Position))
-maize_descending_chr6 <- filter(maize_merged_with_d, Chromosome ==6) %>% arrange(desc(Position))
-maize_descending_chr7 <- filter(maize_merged_with_d, Chromosome ==7) %>% arrange(desc(Position))
-maize_descending_chr8 <- filter(maize_merged_with_d, Chromosome ==8) %>% arrange(desc(Position))
-maize_descending_chr9 <- filter(maize_merged_with_d, Chromosome ==9) %>% arrange(desc(Position))
-maize_descending_chr10 <- filter(maize_merged_with_d, Chromosome ==10) %>% arrange(desc(Position))
-```
-
-# produce teosinte data grouped by chromose with ascending position, missing dat replaced by ?, save in ./teosinte
+# produce maize files grouped by chromosome with ascending position, missiing data is replaced by ?, save in ./maize_after_review
 
 ```{r}
-f <- teosinte_merged_with_q
- 
-for (i in 1:10){subdata=f[f$Chromosome==i,];subdata=subdata[order(subdata$Position),];of=paste('./teosinte/teosinte_ascending_chr', i,sep='_');colnames(subdata)=colnames(f);write.table(subdata,file=of,quote=F,sep='\t',row.names=F)}
+for (i in 1:10) {subdata <- filter(maize_merged_with_question, Chromosome == i) %>% arrange(Position);
+  filename <- paste("./maize_after_review/maize_ascending_chr", i, ".txt", sep = "");
+   write.table(subdata, file = filename, quote = F, sep = "\t", row.names = F )
+}
 ```
 
 
 ```{r}
-teosinte_ascending_chr1 <- filter(teosinte_merged_with_q, Chromosome ==1) %>% arrange(Position)
-teosinte_ascending_chr2 <- filter(teosinte_merged_with_q, Chromosome ==2) %>% arrange(Position)
-teosinte_ascending_chr3 <- filter(teosinte_merged_with_q, Chromosome ==3) %>% arrange(Position)
-teosinte_ascending_chr4 <- filter(teosinte_merged_with_q, Chromosome ==4) %>% arrange(Position)
-teosinte_ascending_chr5 <- filter(teosinte_merged_with_q, Chromosome ==5) %>% arrange(Position)
-teosinte_ascending_chr6 <- filter(teosinte_merged_with_q, Chromosome ==6) %>% arrange(Position)
-teosinte_ascending_chr7 <- filter(teosinte_merged_with_q, Chromosome ==7) %>% arrange(Position)
-teosinte_ascending_chr8 <- filter(teosinte_merged_with_q, Chromosome ==8) %>% arrange(Position)
-teosinte_ascending_chr9 <- filter(teosinte_merged_with_q, Chromosome ==9) %>% arrange(Position)
-teosinte_ascending_chr10 <- filter(teosinte_merged_with_q, Chromosome ==10) %>% arrange(Position)
+maize_ascending_chr5 <- read.table("./maize_after_review/maize_ascending_chr5.txt") # view one of the results to double check
+maize_ascending_chr5 <- read_tsv("./maize_after_review/maize_ascending_chr5.txt")
 ```
 
-# produce teosinte files grouped by chromosome with descending position, missiing data is replaced by -, save in ./teosinte
 
+
+# produce maize files grouped by chromosome with descending position, missiing data is replaced by -, and save in ./maize_after_review
 
 ```{r}
-f <- teosinte_merged_with_d
- 
-for (i in 1:10){subdata=f[f$Chromosome==i,];subdata=subdata[order(subdata$Position),decrease=T];of=paste('./teosinte/teosinte_descending_chr', i,sep='_');colnames(subdata)=colnames(f);write.table(subdata,file=of,quote=F,sep='\t',row.names=F)}
+for (i in 1:10) {subdata <- filter(maize_merged_with_dash, Chromosome == i) %>% arrange(desc(Position));
+  filename <- paste("./maize_after_review/maize_descending_chr", i, ".txt", sep = "");
+   write.table(subdata, file = filename, quote = F, sep = "\t", row.names = F )
+}
 ```
 
 ```{r}
-teosinte_descending_chr1 <- filter(teosinte_merged_with_d, Chromosome ==1) %>% arrange(desc(Position)) 
-teosinte_descending_chr2 <- filter(teosinte_merged_with_d, Chromosome ==2) %>% arrange(desc(Position))
-teosinte_descending_chr3 <- filter(teosinte_merged_with_d, Chromosome ==3) %>% arrange(desc(Position))
-teosinte_descending_chr4 <- filter(teosinte_merged_with_d, Chromosome ==4) %>% arrange(desc(Position))
-teosinte_descending_chr5 <- filter(teosinte_merged_with_d, Chromosome ==5) %>% arrange(desc(Position))
-teosinte_descending_chr6 <- filter(teosinte_merged_with_d, Chromosome ==6) %>% arrange(desc(Position))
-teosinte_descending_chr7 <- filter(teosinte_merged_with_d, Chromosome ==7) %>% arrange(desc(Position))
-teosinte_descending_chr8 <- filter(teosinte_merged_with_d, Chromosome ==8) %>% arrange(desc(Position))
-teosinte_descending_chr9 <- filter(teosinte_merged_with_d, Chromosome ==9) %>% arrange(desc(Position))
-teosinte_descending_chr10 <- filter(teosinte_merged_with_d, Chromosome ==10) %>% arrange(desc(Position))
+maize_descending_chr7 <- read_tsv("./maize_after_review/maize_descending_chr7.txt") # view one of the results to double check
+```
 
 
+# produce teosinte data grouped by chromose with ascending position, missing dat replaced by ?, save in ./teosinte_after_review
+
+```{r}
+for (i in 1:10) {subdata <- filter(teosinte_merged_with_question, Chromosome == i) %>% arrange(Position);
+  filename <- paste("./teosinte_after_review/teosinte_ascending_chr", i, ".txt", sep = "");
+  write.table(subdata, file = filename, quote = F, sep = "\t", row.names = F)
+  
+}
+```
+
+
+# produce teosinte files grouped by chromosome with descending position, missiing data is replaced by -, save in ./teosinte_after_review
+
+```{r}
+for (i in 1:10) {subdata <- filter(teosinte_merged_with_dash, Chromosome == i) %>% arrange(desc(Position));
+  filename <- paste("./teosinte_after_review/teosinte_descending_chr", i, ".txt", sep = "");
+  write.table(subdata, file = filename, quote = F, sep = "\t", row.names = F)
+  
+}
 ```
 
 
@@ -201,70 +177,122 @@ library("ggplot2")
 ```
 
 
-# SNP density
+# SNP distributions on chromosomes
+
 ```{r}
-p <- maize_merged
-p <- p[p$Chromosome %in%  c(1:10)]
-p <- p[p$Position != 'multiple']
-p <- p[!is.na(p$Position)]
+as <- maize_merged
+as <- as[as$Chromosome %in% c(1:10),]
+as <- as[as$Position != "multiple",]
+as <- as[!is.na(as$Position),]
+ggplot (as) + geom_bar(mapping = aes(x = Chromosome, fill = Chromosome)) +xlab(label = "Chromosome") + ylab(label = "SNPs") + ggtitle("SNP Distribution on Chromosomes - Maize") + scale_x_discrete(limit=c(1:10))
 
-ggplot(data = p, mapping = aes(x=factor(Chromosome,levels=c(1:10), y=as.numeric(Position)/1000000), color='blue') + geom_point(size=0.1) + facet_wrap(~ Chromosome) + facet_wrap(~ chromosome)
+as <- teosinte_merged
+as <- as[as$Chromosome %in% c(1:10),]
+as <- as[as$Position != "multiple",]
+as <- as[!is.na(as$Position),]
+ggplot (data = teosinte_merged) + geom_bar(mapping = aes(x = Chromosome, fill = Chromosome)) +xlab(label = "Chromosome") + ylab(label = "SNPs") + ggtitle("SNP Distribution on Chromomosomes - Teosinte") + scale_x_discrete(limit=c(1:10))
 ```
-```{r}
-ggplot(data = maize_merged, mapping = aes(x=factor(Chromosome,levels=c(1:10)), y=as.numeric(Position)/1000000), color='blue') + geom_point(size=0.1) 
-```
 
-
-
+# SNP distributions across chromosomes
 ```{r}
 library(ggplot2)
-as <- read.table('./data/snp_position.txt', header = T,row.names=1,sep='\t')
+as <- maize_merged
 as <- as[as$Chromosome %in% c(1:10),]
 as <- as[as$Position != "multiple",]
 as <- as[!is.na(as$Position),]
 ggplot() + 
-  geom_point(data = as, aes(x=factor(Chromosome,levels=c(1:10)), y=as.numeric(Position)/1000000), color = '#B15BFF', shape = 95, size = 5, alpha = 0.2) + 
-  labs(title = 'Distribution of SNPs across all chromosome', x = 'Chromosome', y = 'Chromosomal Position(Mb)')  + 
+  geom_point(data = as, aes(x=factor(Chromosome,levels=c(1:10)), y=as.numeric(Position)/1000000), color = 'red', shape = 95, size = 5, alpha = 0.2) + 
+  labs(title = 'SNP Distributions accross Chromosomes - Maize', x = 'Chromosome', y = 'Chromosomal Position(Mb)')  + 
+  theme_bw() 
+
+library(ggplot2)
+as <- teosinte_merged
+as <- as[as$Chromosome %in% c(1:10),]
+as <- as[as$Position != "multiple",]
+as <- as[!is.na(as$Position),]
+ggplot() + 
+  geom_point(data = as, aes(x=factor(Chromosome,levels=c(1:10)), y=as.numeric(Position)/1000000), color = 'red', shape = 95, size = 5, alpha = 0.2) + 
+  labs(title = 'SNP Distributions accross Chromosomes - Teosinte', x = 'Chromosome', y = 'Chromosomal Position(Mb)')  + 
   theme_bw() 
 ```
 
+# Missing data and amount of heterozygosity
 
 ```{r}
-as <- read.table('./data/snp_position.txt', header = T,row.names=1,sep='\t')
-as <- as[as$Chromosome %in% c(1:10),]
-as <- as[as$Position != "multiple",]
-as <- as[!is.na(as$Position),]
-ggplot() + 
-  geom_point(data = as, aes(x=factor(Chromosome,levels=c(1:10)), y=as.numeric(Position)/1000000), color = 'red', shape = 95, size = 5, alpha = 0.2) 
+
+maize_aa <- maize_merged 
+maize_aa <- filter(maize_merged, Chromosome %in% c(1:10))
+
+
+
+ggplot(maize_merged) +
+  geom_bar(aes(x=Chromosome))
+
+ggplot(maize_merged) +
+  geom_bar(aes(x=Chromosome, fill = Chromosome))
+
+ggplot(maize_merged) +
+  geom_bar(aes(x=Chromosome, fill = Chromosome), position = "fill")
+
 ```
-
-
-
-
-
-
-
-
-
-
-
 
 
 
 
 ```{r}
-maize_snp <- maize_merged %>% group_by(Chromosome) %>% mutate(Position, Binned=cut(Position,25,labels=F))
+# read data
+heterozygosity_maize <- fang_et_al_genotypes  
+heterozygosity_maize <- filter(heterozygosity_maize, Group %in% c('ZMMIL', 'ZMMLR', 'ZMMMR')) 
+
+
+for (i in c("A/A","T/T", "C/C", "G/G")) {
+  heterozygosity_maize <- as_tibble(lapply(heterozygosity_maize, gsub, pattern = i, replacement = "homo") )
+} 
+
+for (i in c("A/T", "A/G","A/C","T/A","T/C", "T/G","C/G","C/T","C/A","G/C", "G/A","G/T")) {
+  heterozygosity_maize <- as_tibble(lapply(heterozygosity_maize, gsub, pattern = i, replacement = "hetero") )
+}
+
+heterozygosity_maize <- as_tibble(lapply(heterozygosity_maize, gsub, pattern = "\\?\\/\\?", replacement = "miss") )
+
+
+
+
+ggplot(heterozygosity_maize) +
+  geom_bar(aes(x=Group, fill = Group))
+
+ggplot(heterozygosity_maize) +
+  geom_bar(aes(x=Group, fill = abph1.20), position = "fill")
+
 ```
 
-ggplot(maize_merged)
-```
+
+#count SNP based on types
+heterozygosity$missing_data <- rowSums(heterozygosity == "?/?")
+heterozygosity$AA <- rowSums(heterozygosity == "A/A")
+heterozygosity$TT <- rowSums(heterozygosity == "T/T")
+heterozygosity$CC <- rowSums(heterozygosity == "C/C")
+heterozygosity$GG <- rowSums(heterozygosity == "G/G")
+heterozygosity <- mutate(heterozygosity, homo = AA + TT + CC + GG)
+heterozygosity <- mutate(heterozygosity, hetero = 983 - homo - missing_data)
+heterozygosity <- select(heterozygosity, Sample_ID, Group, homo, hetero, missing_data) %>% as.data.frame()
+#heterozygosity <- mutate(heterozygosity, homo = homo/983, hetero = hetero/983, missing_data = missing_data/983)
+
+ggplot(heterozygosity) +
+  geom_bar(aes(x=Group, fill = Group))
+
+ggplot(heterozygosity) +
+  geom_bar(aes(x=Group, fill = ae1.4))
+
+ggplot(heterozygosity) +
+  geom_bar(aes(x=Group, fill = Group), position = "fill")
 
 
 
-# 
+# my own visualization
+
 ```{r}
-ggplot(data = "maize_merge" ) + geom_point(mapping = aes(x=Position, y = ))
-```
 
+```
 
 
