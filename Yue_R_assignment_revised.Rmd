@@ -1,20 +1,14 @@
 ---
-title: "changes"
+title: "revisedf"
 author: "Yue Liu"
 date: "2023-03-16"
 output: html_document
+discriptions: cleaned up codes
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
 
----
-title: "R_assignment"
-author: "Yue Liu"
-date: "2023-03-11"
-output: html_document
----
+
+
 
 
 # set enviroment
